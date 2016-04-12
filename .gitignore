@@ -1,1 +1,9 @@
 db/*
+incremental_db/*
+*.rpt
+*.summary
+*.done
+*.jdi
+*.pin
+*.pof
+*.sof
