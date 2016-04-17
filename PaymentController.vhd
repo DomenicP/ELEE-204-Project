@@ -33,8 +33,46 @@ signal cur_state, next_state : state_type;
 	-- next_state is the state that will be active on the next clock cycle
 
 begin
-
--- Move to the next state on each rising clock edge
+	Case cur_state is
+		when A => 		IF (q => '1' AND j => '0') THEN next_state <= B;
+							ELSIF (q => '0' AND j => '0') THEN next_state <= A;
+							ELSE next_state <= ERROR 
+							END IF;
+							
+		when B =>		IF (q => '1' AND j => '0') THEN next_state <= C;
+							ELSIF (q => '0' AND j => '0') THEN next_state <= B;
+							ELSE next_state <= ERROR 
+							END IF;
+							
+		when C =>		IF (q => '1' AND j => '0') THEN next_state <= D;
+							ELSIF (q => '0' AND j => '0') THEN next_state <= C;
+							ELSE next_state <= ERROR 
+							END IF;
+							
+		when D =>		IF (q => '1' AND j => '0') THEN next_state <= E;
+							ELSIF (q => '0' AND j => '0') THEN next_state <= D;
+							ELSE next_state <= ERROR 
+							END IF;
+							
+		when E =>		IF (q => '1' AND j => '0') THEN next_state <= F;
+							ELSIF (q => '0' AND j => '0') THEN next_state <= E;
+							ELSIF (n => '1' AND j => '0')next_state <= NORMAL_CYCLE -- ???
+							ELSE next_state <= ERROR 
+							END IF;
+							
+		when F =>		IF (q => '1' AND j => '0') THEN next_state <= R;
+							ELSIF (q => '0' AND j => '0') THEN next_state <= F;
+							ELSIF (s => '1' AND j => '0')next_state <= SUPER_CYCLE -- ???
+							ELSE next_state <= ERROR 
+							END IF;
+							
+		when R => 		IF (r => '1' AND j => '0') THEN next_state <= REFUND; -- ???
+							ELSE next_state <= ERROR 
+							END IF;
+							
+		when ERR =>		next_state <= ERROR 
+		
+		-- Move to the next state on each rising clock edge
 process (clk)
 begin
 	if clk'event and clk = '1' then
