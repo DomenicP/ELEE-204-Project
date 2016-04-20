@@ -16,12 +16,12 @@ use IEEE.std_logic_1164.all;
 entity WashingMachineController is
 	port(CLOCK_50 : in  std_logic;
 		  KEY      : in  std_logic_vector(3  downto 0);
-		  SW       : in  std_logic_vector(16 downto 0);
-		  LEDR     : out std_logic_vector(16 downto 0));
+		  SW       : in  std_logic_vector(17 downto 0);
+		  LEDR     : out std_logic_vector(17 downto 0);
+		  LEDG	  : out std_logic_vector(7 downto 0));
 end;
 
 architecture WashingMachineController_arch of WashingMachineController is
-		-- clk is the 50MHz clock on the Altera DE2 board
 	signal q, j, w, s : std_logic;
 		-- q represents a quarter input
 		-- j represents a coin jam
@@ -37,6 +37,9 @@ architecture WashingMachineController_arch of WashingMachineController is
 	signal is_running : std_logic;
 		-- is_running indicates whether the washing machine is actively running
 		
+	signal payment : integer := 0;
+		-- payment stores the amount of money that has been placed into the machine (in cents)
+		
 begin
 	-- Map inputs on the DE2 board to signals
 	q <= KEY(0);
@@ -46,10 +49,18 @@ begin
 	brights <= KEY(3);
 	override <= SW(1);
 
-	-- Instantiate the payment controller
-	payment_controller : entity work.PaymentController port map(CLOCK_50, q, j, is_running, w, s);
-	
 	-- Instantiate the cycle controller
-	cycle_controller : entity work.CycleController port map(CLOCK_50, whites, colors, brights, override, refund, is_running);
+	--cycle_controller : entity work.CycleController port map(CLOCK_50, whites, colors, brights, override, refund, is_running);
+
+	-- Handle payments asynchronously
+	insert_coin: process (q)
+	begin
+		if q'event and q = '1' then
+			payment <= payment + 25;
+		end if;
+	end process;
+	
+	LEDG(0) <= w;
+	LEDG(1) <= s;
 	
 end WashingMachineController_arch;

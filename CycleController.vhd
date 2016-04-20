@@ -1,7 +1,7 @@
 library IEEE;
 use IEEE.std_logic_1164.all;
 
-entity CycleControl is
+entity CycleController is
 	port (clock, Whites, Colors, Bright_Colors, WALARM, W1ALARM, RALARM, SALARM, Wash, Rinse, Spin, SuperCycle : in std_logic;
 	--clock is the standard timing input from the board
 	--Whites is the user input that says if the cycle is for mostly white clothing
@@ -32,7 +32,7 @@ end;
 	--2000000000 in binary is (1110111001101011001010000000000)
 	--1000000000 in binary is (0111011100110101100101000000000) (needed for the partial cycles)
 
-architecture Controller of CycleControl is 
+architecture CycleController_arch of CycleController is 
 type state_type is (Cycle_Select, Hot_Washa, Hot_Washb, Warm_Washa, Warm_Washb, Cold_Washa, Cold_Washb, Additional_Hot_Washa, Additional_Hot_Washb, 
 	Additional_Warm_Washa, Additional_Warm_Washb, Additional_Cold_Washa, 
 	Additional_Cold_Washb, Hot_Rinse, Warm_Rinse, Cold_Rinse,
@@ -326,4 +326,4 @@ end process;
 	RE <= '1' WHEN Cur_State = Rinse_Alarm ELSE '0';
 	SE <= '1' WHEN Cur_State = Spin_Alarm ELSE '0';
 	
-end Controller;
+end CycleController_arch;
