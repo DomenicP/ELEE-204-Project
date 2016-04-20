@@ -7,3 +7,4 @@ incremental_db/*
 *.pin
 *.pof
 *.sof
+*.cdf
