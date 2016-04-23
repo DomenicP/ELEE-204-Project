@@ -9,12 +9,21 @@
 -- April 12, 2016
 --
 
+--
+-- TODO:
+--   [X] Implement payment control
+--   [X] Implement cycle control
+--   [X] Implement basic UI
+--   [ ] Implement error recognition
+--   [ ] Create error codes
+--   [ ] Implement error recover (i.e. reset)
+--   [ ] Implement refund functionality
+--   [ ] Finish documentation
+-- 
+
 -- Import requried libraries
 library IEEE;
 use IEEE.std_logic_1164.all;
-use IEEE.std_logic_arith.all;
-use IEEE.numeric_std.all;
-
 
 -- WashingMachineController is the top level entity for the washer control system.
 entity WashingMachineController is
@@ -35,12 +44,8 @@ architecture WashingMachineController_arch of WashingMachineController is
 	end component;
 
 	type payment_state_type is (zero, twentyfive, fifty, seventyfive, onedollar, dollartwentyfive, coin_jam);
-		-- zero
-		-- twentyfive
-		-- fifty
-		-- seventyfive
-		-- onedollar
-		-- dollartwentyfive
+		-- The numbered states indicate how much money has been placed into the machine
+		-- coin_jam is a state to handle a mechanical coin jam condition
 
 	type cycle_state_type is (cycle_select, fill, wash, wash_ext, rinse, spin, done, refund, error);
 		-- cycle_select
@@ -63,13 +68,20 @@ architecture WashingMachineController_arch of WashingMachineController is
 		-- brights represents selecting a cold water cycle
 		-- override represents a request from the user to stop the wash cycle
 
-	signal jam, balance, water : std_logic;
-		-- jam is 1 when the system detects a coin jam, and 0 otherwise
-		-- balance is 1 when the sensor detects the washer is out of balance, and 0 otherwise
-		-- water is 1 when the system detects a water level related error, and 0 otherwise
+	signal jam_sensor, balance_sensor, water_sensor : std_logic;
+		-- jam_sensor is 1 when the system detects a coin jam, and 0 otherwise
+		-- balance_sensor is 1 when the sensor detects the washer is out of balance, and 0 otherwise
+		-- water_sensor is 1 when the system detects a water level related error, and 0 otherwise
 
 	signal reset : std_logic;
 		-- reset is used to manually reset the system after entering an error state_type
+		
+	signal hot_water, warm_water, cold_water, door_lock, agitate, drain, coin_return : std_logic;
+		-- [hot/warm/cold]_water are active high signals to fill the machine with the appropriate temperature water
+		-- door_lock is '0' when the door is unlocked, and '1' when the door is locked
+		-- agitate is an active high signal that controls the motor during the wash state
+		-- drain is an active high signal to spin the water out from the machine
+		-- coin_return is an active high signal that indicates funds should be returned to the user
 
 	signal payment_state : payment_state_type := zero;
 		-- Represents the current state of the payment FSM
@@ -87,7 +99,6 @@ architecture WashingMachineController_arch of WashingMachineController is
 	signal counter : integer := 0;
 	signal counter_bits : std_logic_vector(7 downto 0);
 	signal reset_counter: std_logic;
-
 
 begin
 
@@ -110,12 +121,16 @@ begin
 	hex3_decoder : SevenSegDecoder port map (hex3_dat, HEX3);
 	hex4_decoder : SevenSegDecoder port map (hex4_dat, HEX4);
 	hex5_decoder : SevenSegDecoder port map (hex5_dat, HEX5);
+	hex6_decoder : SevenSegDecoder port map (hex6_dat, HEX6);
+	hex7_decoder : SevenSegDecoder port map (hex7_dat, HEX7);
 
 	-- Handle quarter inputs
-	insert_quarter: process (quarter, jam, current_cycle_state)
+	insert_quarter: process (quarter, jam, current_cycle_state, reset)
 	begin
 		-- Check for a coin jam
-		if jam = '1' then
+		if reset = '1' then
+			payment_state <= zero;
+		elsif jam = '1' then
 			payment_state <= coin_jam;
 		elsif current_cycle_state = done then
 			payment_state <= zero;
@@ -135,51 +150,51 @@ begin
 		end if;
 	end process insert_quarter;
 
-	-- Update the hex display that shows the payment state
+	-- Update the hex display to show the payment state
 	update_payment_display: process (payment_state)
 	begin
 		case payment_state is
 			when zero =>
-				hex0_dat <= x"0";
-				hex1_dat <= x"0";
 				hex2_dat <= x"0";
+				hex1_dat <= x"0";
+				hex0_dat <= x"0";
 
 			when twentyfive =>
-				hex0_dat <= x"5";
-				hex1_dat <= x"2";
 				hex2_dat <= x"0";
+				hex1_dat <= x"2";
+				hex0_dat <= x"5";
 
 			when fifty =>
-				hex0_dat <= x"0";
-				hex1_dat <= x"5";
 				hex2_dat <= x"0";
+				hex1_dat <= x"5";
+				hex0_dat <= x"0";
 
 			when seventyfive =>
-				hex0_dat <= x"5";
-				hex1_dat <= x"7";
 				hex2_dat <= x"0";
+				hex1_dat <= x"7";
+				hex0_dat <= x"5";
 
 			when onedollar =>
-				hex0_dat <= x"0";
-				hex1_dat <= x"0";
 				hex2_dat <= x"1";
+				hex1_dat <= x"0";
+				hex0_dat <= x"0";
 
 			when dollartwentyfive =>
-				hex0_dat <= x"5";
-				hex1_dat <= x"2";
 				hex2_dat <= x"1";
+				hex1_dat <= x"2";
+				hex0_dat <= x"5";
 
 			when others =>
-				hex0_dat <= x"0";
-				hex1_dat <= x"0";
 				hex2_dat <= x"0";
+				hex1_dat <= x"0";
+				hex0_dat <= x"0";
 
 		end case;
 		hex3_dat <= x"0";
 	end process update_payment_display;
 
 	-- Figure out what the next state for the cycle FSM should be
-	determine_next_cycle_state: process (whites, brights, colors, override, balance, water, reset)
+	determine_next_cycle_state: process (whites, brights, colors, override, balance, water, reset, current_cycle_state, payment_state, counter)
 	begin
 		case current_cycle_state is
 			when cycle_select =>
@@ -204,39 +219,84 @@ begin
 				reset_counter <= '1';
 
 			when fill =>
-				--if counter > 15000000000 then
-				--	next_cycle_state <= wash;
-				--	reset_counter <= '1';
-				--else
-				--	next_cycle_state <= fill;
-				--	reset_counter <= '0';
-				--end if;
-				next_cycle_state <= fill;
-				reset_counter <= '0';
+				-- Fill the washer with water for 30 seconds
+				if counter > 1500000000 then
+					next_cycle_state <= wash;
+					reset_counter <= '1';
+				else
+					next_cycle_state <= fill;
+					reset_counter <= '0';
+				end if;
 
 			when wash =>
-				next_cycle_state <= wash;
+				-- Run the wash stage for 30 seconds
+				if counter > 1500000000 then
+					-- Check for a super cycle
+					if payment_state = dollartwentyfive then
+						next_cycle_state <= wash_ext;
+					else
+						next_cycle_state <= rinse;
+					end if;
+					reset_counter <= '1';
+				else
+					next_cycle_state <= wash;
+					reset_counter <= '0';
+				end if;
 
 			when wash_ext =>
-				next_cycle_state <= wash_ext;
+				-- Additional wash time for the super cycle
+				if counter > 1500000000 then
+					next_cycle_state <= rinse;
+					reset_counter <= '1';
+				else
+					next_cycle_state <= wash_ext;
+					reset_counter <= '0';
+				end if;
 
 			when rinse =>
-				next_cycle_state <= wash_ext;
+				-- Run the rinse cycle for 30 seconds
+				if counter > 1500000000 then
+					next_cycle_state <= spin;
+					reset_counter <= '1';
+				else
+					next_cycle_state <= rinse;
+					reset_counter <= '0';
+				end if;
 
 			when spin =>
-				next_cycle_state <= spin;
+				-- Spin out and drain the water from the machine
+				if counter > 1500000000 then
+					next_cycle_state <= done;
+					reset_counter <= '1';
+				else
+					next_cycle_state <= spin;
+					reset_counter <= '0';
+				end if;
 
 			when done =>
 				next_cycle_state <= cycle_select;
 				reset_counter <= '1';
+			
+			when error =>
+				-- Handle error conditions
+				if reset = '1' then
+					next_cycle_state <= cycle_select;
+				else
+					next_cycle_state <= error;
+				end if;
+				reset_counter <= '1';
 
 			when others =>
+				-- Unknown state
 				next_cycle_state <= error;
 		end case;
 	end process determine_next_cycle_state;
-
+	
+	-- Show the value of the timer on the 7-segment displays
 	update_cycle_timer: process (counter)
 	begin
+		-- Brute force check the value of the counter, and set the 7-segment display
+		-- to appropriate values to count down from 30. Ugly, but it works.
 		if counter > 0 and counter <= 50000000 then
 			hex5_dat <= x"3";
 			hex4_dat <= x"0";
@@ -332,12 +392,18 @@ begin
 			hex4_dat <= x"0";
 		end if;
 	end process update_cycle_timer;
+	
+	--display_error_code: process ()
+	--begin
+		hex7_dat <= x"E";
+		hex6_dat <= x"0";
+	--end process display_error_code;
 
 	-- Handle updates that occur on the clock cycle
 	update_clock: process (CLOCK_50)
 	begin
 		if CLOCK_50'event and CLOCK_50 = '1' then
-			-- Move to the next state
+			-- Move the cycle controller to the next state
 			current_cycle_state <= next_cycle_state;
 
 			-- Advance the counter
@@ -348,10 +414,43 @@ begin
 			end if;
 		end if;
 	end process update_clock;
-
-	-- Set output LEDs
+	
+	-- Determine washer output signals
+	hot_water  <= '1' when (current_cycle_state = fill or current_cycle_state = rinse) and selected_cycle = hot else '0';
+	warm_water <= '1' when (current_cycle_state = fill or current_cycle_state = rinse) and selected_cycle = warm else '0';
+	cold_water <= '1' when (current_cycle_state = fill or current_cycle_state = rinse) and selected_cycle = cold else '0';
+	
+	door_lock <= '0' when current_cycle_state = cycle_select or
+								 current_cycle_state = error or
+								 current_cycle_state = done
+						  else '1';
+						  
+	agitate <= '1' when current_cycle_state = wash or
+							  current_cycle_state = wash_ext
+					   else '0';
+						
+	drain <= '1' when current_cycle_state = spin else '0';
+	
+	-- Show payment status
 	LEDG(0) <= '1' when payment_state = onedollar or payment_state = dollartwentyfive else '0';
 	LEDG(1) <= '1' when payment_state = dollartwentyfive else '0';
+	
+	-- Show washer controller outputs
+	LEDR(0) <= door_lock;
+	LEDR(1) <= cold_water;
+	LEDR(2) <= warm_water;
+	LEDR(3) <= hot_water;
+	LEDR(4) <= agitate;
+	LEDR(5) <= drain;
+	
+	-- Display the cycle controller state
+	LEDR(17) <= '1' when current_cycle_state = cycle_select 	else '0';
+	LEDR(16) <= '1' when current_cycle_state = fill 			else '0';
+	LEDR(15) <= '1' when current_cycle_state = wash 			else '0';
+	LEDR(14) <= '1' when current_cycle_state = wash_ext 		else '0';
+	LEDR(13) <= '1' when current_cycle_state = rinse 			else '0';
+	LEDR(12) <= '1' when current_cycle_state = spin 			else '0';
+	LEDR(11) <= '1' when current_cycle_state = error 			else '0';
 
 end WashingMachineController_arch;
 
