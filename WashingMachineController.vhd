@@ -9,18 +9,6 @@
 -- April 12, 2016
 --
 
---
--- TODO:
---   [X] Implement payment control
---   [X] Implement cycle control
---   [X] Implement basic UI
---   [X] Implement error recognition
---   [X] Create error codes
---   [X] Implement error recover (i.e. reset)
---   [blahblahblah] Implement refund functionality
---   [ ] Finish documentation
--- 
-
 -- Import requried libraries
 library IEEE;
 use IEEE.std_logic_1164.all;
@@ -48,15 +36,15 @@ architecture WashingMachineController_arch of WashingMachineController is
 		-- coin_jam is a state to handle a mechanical coin jam condition
 
 	type cycle_state_type is (cycle_select, fill, wash, wash_ext, rinse, spin, done, refund, error);
-		-- cycle_select
-		-- fill
-		-- wash
-		-- wash_ext
-		-- rinse
-		-- spin
-		-- coin_jam
-		-- refund
-		-- error
+		-- cycle_select is the state where the machine waits for payment and for the user to select a cycle
+		-- fill is the state where the machine is filling with water
+		-- wash is the state where the machine "agitates" the load to clean the clothing
+		-- wash_ext is an extended wash state for SuperCycle
+		-- rinse is the state where additional water is run through the machine
+		-- spin is the state where the water is spun out of the machine
+		-- coin_jam is an error state to handle coin jams
+		-- refund is a state to handle user refunds
+		-- error is a general error state
 
 	type cycle_type is (hot, warm, cold);
 		-- cycle_type represents the different water temperature wash cycles
