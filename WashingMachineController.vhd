@@ -17,7 +17,7 @@
 --   [X] Implement error recognition
 --   [X] Create error codes
 --   [X] Implement error recover (i.e. reset)
---   [ ] Implement refund functionality
+--   [blahblahblah] Implement refund functionality
 --   [ ] Finish documentation
 -- 
 
@@ -131,12 +131,16 @@ begin
 		if reset = '1' then
 			payment_state <= zero;
 		elsif jam_sensor = '1' then
-			payment_state <= coin_jam;
+			if current_cycle_state = cycle_select then
+				payment_state <= zero;
+			else
+				payment_state <= payment_state;
+			end if;
 		elsif current_cycle_state = done then
 			payment_state <= zero;
 		else
 			-- No coin jam; check for a button press and advance the FSM
-			if quarter'event and quarter = '1' then
+			if quarter'event and quarter = '1' and current_cycle_state = cycle_select and jam_sensor = '0' then
 				case payment_state is
 					when zero =>
 						payment_state <= twentyfive;
@@ -151,11 +155,7 @@ begin
 						payment_state <= onedollar;
 						
 					when onedollar =>
-						if current_cycle_state = cycle_select then
-							payment_state <= dollartwentyfive;
-						else
-							payment_state <= onedollar;
-						end if;
+						payment_state <= dollartwentyfive;
 
 					when dollartwentyfive =>
 						payment_state <= dollartwentyfive;
@@ -217,7 +217,9 @@ begin
 		case current_cycle_state is
 			when cycle_select =>
 				-- Check if payment is sufficient
-				if payment_state = onedollar or payment_state = dollartwentyfive then
+				if jam_sensor = '1' then
+					next_cycle_state <= error;
+				elsif payment_state = onedollar or payment_state = dollartwentyfive then
 					-- Check if any of the cycle select buttons are pressed
 					if whites = '0' then
 						next_cycle_state <= fill;
@@ -247,6 +249,9 @@ begin
 					if balance_sensor = '1' OR water_sensor = '1' then
 						next_cycle_state <= error;
 						reset_counter <= '0';
+					elsif	override = '1' then
+						next_cycle_state <= spin;
+						reset_counter <= '1';
 					else 
 						next_cycle_state <= fill;
 						reset_counter <= '0';
@@ -267,6 +272,9 @@ begin
 				else
 					if balance_sensor = '1' OR water_sensor = '1' then
 						next_cycle_state <= error;
+					elsif override = '1' then
+						next_cycle_state <= spin;
+						reset_counter <= '0';
 					else 
 						next_cycle_state <= wash;
 					end if;
@@ -282,6 +290,9 @@ begin
 				else
 					if balance_sensor = '1' OR water_sensor = '1' then
 						next_cycle_state <= error;
+					elsif override = '1' then
+						next_cycle_state <= spin;
+						reset_counter <= '0';
 					else 
 						next_cycle_state <= wash_ext;
 					end if;
@@ -297,6 +308,9 @@ begin
 				else
 					if balance_sensor = '1' OR water_sensor = '1' then
 						next_cycle_state <= error;
+					elsif override = '1' then
+						next_cycle_state <= spin;
+						reset_counter <= '0';
 					else
 						next_cycle_state <= rinse;
 					end if;
@@ -448,59 +462,33 @@ begin
 	display_error_code: process (current_cycle_state, balance_sensor, water_sensor)
 	begin
 		if current_cycle_state = cycle_select then
-			hex7_dat <= x"0";
+			hex7_dat <= x"1";
 			hex6_dat <= x"0";
 		elsif current_cycle_state = fill then
-			hex7_dat <= x"1";
-			if balance_sensor = '1' then
-				hex6_dat <= x"A";
-			elsif water_sensor = '1' then
-				hex6_dat <= x"B";
-			else
-				hex6_dat <= x"0";
-			end if;
-		elsif current_cycle_state = wash then
 			hex7_dat <= x"2";
-			if balance_sensor = '1' then
-				hex6_dat <= x"A";
-			elsif water_sensor = '1' then
-				hex6_dat <= x"B";
-			else
-				hex6_dat <= x"0";
-			end if;
-		elsif current_cycle_state = rinse then
+			hex6_dat <= x"0";
+		elsif current_cycle_state = wash then
 			hex7_dat <= x"3";
-			if balance_sensor = '1' then
-				hex6_dat <= x"A";
-			elsif water_sensor = '1' then
-				hex6_dat <= x"B";
-			else 
-				hex6_dat <= x"0";
-			end if;
-		elsif current_cycle_state = spin then
+		elsif current_cycle_state = rinse then
 			hex7_dat <= x"4";
-			if balance_sensor = '1' then
-				hex6_dat <= x"A";
-			elsif water_sensor = '1' then 
-				hex6_dat <= x"B";
-			else 
-				hex6_dat <= x"0";
-			end if;
+		elsif current_cycle_state = spin then
+			hex7_dat <= x"5";
 		elsif current_cycle_state = wash_ext then
 			hex7_dat <= x"E";
-			if balance_sensor = '1' then 
+		elsif current_cycle_state = error or jam_sensor = '1'then
+			hex7_dat <= x"0";
+			if water_sensor = '1' then
 				hex6_dat <= x"A";
-			elsif water_sensor = '1' then
+			elsif balance_sensor = '1' then
 				hex6_dat <= x"B";
+			elsif jam_sensor = '1' and current_cycle_state = cycle_select then
+				hex6_dat <= x"C";
 			else 
 				hex6_dat <= x"0";
 			end if;
-		else
-			hex7_dat <= x"0";
-			hex6_dat <= x"0";
 		end if;
 	end process display_error_code;
-
+	
 	-- Handle updates that occur on the clock cycle
 	update_clock: process (CLOCK_50)
 	begin
