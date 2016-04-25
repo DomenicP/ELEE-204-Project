@@ -217,6 +217,9 @@ begin
 		case current_cycle_state is
 			when cycle_select =>
 				-- Check if payment is sufficient
+				if payment_state = twentyfive then
+					coin_return <= '0';
+				end if;
 				if jam_sensor = '1' then
 					next_cycle_state <= error;
 				elsif payment_state = onedollar or payment_state = dollartwentyfive then
@@ -342,8 +345,10 @@ begin
 				-- Handle error conditions
 				if reset = '1' then
 					next_cycle_state <= cycle_select;
+					coin_return <= '0';
 				else
 					next_cycle_state <= error;
+					coin_return <= '1';
 				end if;
 				reset_counter <= '1';
 				selected_cycle <= selected_cycle;
@@ -532,6 +537,7 @@ begin
 	LEDR(3) <= hot_water;
 	LEDR(4) <= agitate;
 	LEDR(5) <= drain;
+	LEDR(6) <= coin_return;
 	
 	-- Display the cycle controller state
 	LEDR(17) <= '1' when current_cycle_state = cycle_select 	else '0';
